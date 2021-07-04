@@ -22,3 +22,15 @@ func main() {
     // WIP
 }
 ```
+
+## API
+
+[pkg.go.dev Reference](https://pkg.go.dev/github.com/web3-storage/go-w3s-client)
+
+## Contribute
+
+Feel free to dive in! [Open an issue](https://github.com/web3-storage/go-w3s-client/issues/new) or submit PRs.
+
+## License
+
+Dual-licensed under [MIT + Apache 2.0](https://github.com/web3-storage/go-w3s-client/blob/main/LICENSE.md)

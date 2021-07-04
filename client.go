@@ -11,6 +11,8 @@ import (
 	"github.com/ipfs/go-cid"
 )
 
+const targetChunkSize = 1024 * 1024 * 10
+
 // Option is an option configuring a web3.storage client.
 type Option func(cfg *clientConfig) error
 
@@ -89,17 +91,13 @@ func (c *client) Put(files []os.File) (cid.Cid, error) {
 
 	go func() {
 		defer wg.Done()
-		for {
-			select {
-			case r := <-carChunks:
-				// TODO: send request, read response and assign to root
-			}
+		for r := range carChunks {
+			// TODO: send request, read response and assign to root
 		}
 	}()
 
-	targetSize := 1024 * 1024 * 10
 	strategy := carbites.Treewalk
-	err := carbites.Split(context.Background(), reader, targetSize, strategy, carChunks)
+	err := carbites.Split(context.Background(), reader, targetChunkSize, strategy, carChunks)
 	if err != nil {
 		return cid.Undef, err
 	}
