@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/alanshaw/go-carbites"
 	bserv "github.com/ipfs/go-blockservice"
@@ -24,7 +23,6 @@ import (
 )
 
 const targetChunkSize = 1024 * 1024 * 10
-const maxRetries = 5
 
 // Option is an option configuring a web3.storage client.
 type Option func(cfg *clientConfig) error
@@ -53,6 +51,7 @@ type clientConfig struct {
 type client struct {
 	cfg *clientConfig
 	dag ipld.DAGService
+	hc  *http.Client
 }
 
 // WithEndpoint sets the URL of the root API when making requests (default
@@ -100,7 +99,7 @@ func NewClient(options ...Option) (Client, error) {
 	if cfg.token == "" {
 		return nil, fmt.Errorf("missing auth token")
 	}
-	c := client{cfg: &cfg}
+	c := client{cfg: &cfg, hc: &http.Client{}}
 	if cfg.ds != nil {
 		bs := bserv.New(blockstore.NewBlockstore(cfg.ds), nil)
 		c.dag = dag.NewDAGService(bs)
@@ -114,16 +113,20 @@ func (c *client) newMemDag() ipld.DAGService {
 	return dag.NewDAGService(bs)
 }
 
+// TODO: retry
 func (c *client) sendCar(r io.Reader) error {
-	for i := 0; i < 5; i++ {
-		_, err := http.Post(c.cfg.endpoint+"/car", "application/car", r)
-		if err == nil {
-			break
-		}
-		if i > maxRetries {
-			return err
-		}
-		time.Sleep(time.Second * time.Duration(5) * time.Duration(i))
+	req, err := http.NewRequest("POST", c.cfg.endpoint+"/car", r)
+	if err != nil {
+		return err
+	}
+	req.Header.Add("Content-Type", "application/car")
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.cfg.token))
+	res, err := c.hc.Do(req)
+	if err != nil {
+		return err
+	}
+	if res.StatusCode != 200 {
+		return fmt.Errorf("unexpected response status: %d", res.StatusCode)
 	}
 	return nil
 }
@@ -149,11 +152,12 @@ func (c *client) Put(ctx context.Context, dir files.Directory) (cid.Cid, error) 
 	params := api.DefaultAddParams()
 	params.CidVersion = 1
 	params.RawLeaves = true
+	params.Wrap = true
 
 	a := adder.New(&clusterDagService{dag}, params, nil)
 	root, err := a.FromFiles(ctx, dir)
 	if err != nil {
-		return cid.Undef, nil
+		return cid.Undef, err
 	}
 
 	carReader, carWriter := io.Pipe()
