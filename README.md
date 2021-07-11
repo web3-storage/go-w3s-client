@@ -5,7 +5,7 @@
 ## Install
 
 ```sh
-go get github.com/alanshaw/go-w3s-client
+go get github.com/web3-storage/go-w3s-client
 ```
 
 ## Usage
@@ -14,7 +14,7 @@ go get github.com/alanshaw/go-w3s-client
 package main
 
 import (
-    "github.com/alanshaw/go-w3s-client"
+    "github.com/web3-storage/go-w3s-client"
 )
 
 func main() {

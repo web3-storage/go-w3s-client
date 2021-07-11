@@ -167,6 +167,7 @@ func (c *client) Put(ctx context.Context, dir files.Directory) (cid.Cid, error) 
 	go func() {
 		defer wg.Done()
 		for r := range carChunks {
+			// TODO: concurrency
 			err := c.sendCar(r)
 			if err != nil {
 				sendErr = err
