@@ -157,15 +157,19 @@ func (c *client) Put(ctx context.Context, dir files.Directory) (cid.Cid, error) 
 	}
 
 	carReader, carWriter := io.Pipe()
-
-	err = car.WriteCar(ctx, dag, []cid.Cid{root}, carWriter)
-	if err != nil {
-		return cid.Undef, nil
-	}
-
 	carChunks := make(chan io.Reader)
+
 	var wg sync.WaitGroup
 	wg.Add(1)
+
+	go func() {
+		err = car.WriteCar(ctx, dag, []cid.Cid{root}, carWriter)
+		if err != nil {
+			carWriter.CloseWithError(err)
+			return
+		}
+		carWriter.Close()
+	}()
 
 	var sendErr error
 	go func() {
