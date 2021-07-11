@@ -80,7 +80,9 @@ func WithToken(token string) Option {
 // request.
 func WithDatastore(ds ds.Batching) Option {
 	return func(cfg *clientConfig) error {
-		cfg.ds = ds
+		if ds != nil {
+			cfg.ds = ds
+		}
 		return nil
 	}
 }
