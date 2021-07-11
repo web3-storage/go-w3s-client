@@ -59,7 +59,9 @@ type client struct {
 // https://api.web3.storage).
 func WithEndpoint(endpoint string) Option {
 	return func(cfg *clientConfig) error {
-		cfg.endpoint = endpoint
+		if endpoint != "" {
+			cfg.endpoint = endpoint
+		}
 		return nil
 	}
 }
