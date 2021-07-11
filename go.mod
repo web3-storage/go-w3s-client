@@ -1,4 +1,4 @@
-module github.com/alanshaw/go-w3s-client
+module github.com/web3-storage/go-w3s-client
 
 go 1.15
 
