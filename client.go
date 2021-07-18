@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/alanshaw/go-carbites"
 	bserv "github.com/ipfs/go-blockservice"
@@ -31,7 +32,7 @@ type Option func(cfg *clientConfig) error
 type Client interface {
 	Get(context.Context, cid.Cid) (GetResponse, error)
 	Put(context.Context, files.Directory) (cid.Cid, error)
-	Status(context.Context, cid.Cid) (Status, error)
+	Status(context.Context, cid.Cid) (*Status, error)
 }
 
 // GetResponse is a response to a call to the Get method.
@@ -39,8 +40,58 @@ type GetResponse interface {
 	Files() []os.File
 }
 
+type PinStatus int
+
+const (
+	PinStatusPinned    = PinStatus(api.TrackerStatusPinned)
+	PinStatusPinning   = PinStatus(api.TrackerStatusPinning)
+	PinStatusPinQueued = PinStatus(api.TrackerStatusPinQueued)
+)
+
+func (s PinStatus) String() string {
+	return api.TrackerStatus(s).String()
+}
+
+type Pin struct {
+	peerID   string
+	peerName string
+	region   string
+	status   PinStatus
+	updated  time.Time
+}
+
+type DealStatus int
+
+const (
+	DealStatusQueued DealStatus = iota
+	DealStatusPublished
+	DealStatusActive
+)
+
+func (s DealStatus) String() string {
+	return []string{"Queued", "Published", "Active"}[s]
+}
+
+type Deal struct {
+	dealID            uint64
+	miner             string
+	status            DealStatus
+	pieceCid          cid.Cid
+	dataCid           cid.Cid
+	dataModelSelector string
+	activation        time.Time
+	created           time.Time
+	updated           time.Time
+}
+
 // Status is IPFS pin and Filecoin deal status for a given CID.
-type Status interface{}
+type Status struct {
+	cid     string
+	dagSize uint64
+	created string
+	pins    []Pin
+	deals   []Deal
+}
 
 type clientConfig struct {
 	token    string
@@ -197,6 +248,17 @@ func (c *client) Put(ctx context.Context, dir files.Directory) (cid.Cid, error) 
 	return root, sendErr
 }
 
-func (c *client) Status(ctx context.Context, cid cid.Cid) (Status, error) {
-	return nil, fmt.Errorf("not implemented")
+func (c *client) Status(ctx context.Context, cid cid.Cid) (*Status, error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/status/%s", c.cfg.endpoint, cid), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.cfg.token))
+	res, err := c.hc.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if res.StatusCode != 200 {
+		return nil, fmt.Errorf("unexpected response status: %d", res.StatusCode)
+	}
 }
