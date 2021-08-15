@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 
-	files "github.com/ipfs/go-ipfs-files"
 	"github.com/web3-storage/go-w3s-client"
 )
 
@@ -20,12 +20,7 @@ func main() {
 	file0, _ := os.Open("pinpie.jpg")
 	file1, _ := os.Open("donotresist.jpg")
 
-	dir := files.NewMapDirectory(map[string]files.Node{
-		"pinpie.jpg":      files.NewReaderFile(file0),
-		"donotresist.jpg": files.NewReaderFile(file1),
-	})
-
-	cid, _ := c.Put(context.Background(), dir)
+	cid, _ := c.Put(context.Background(), []fs.File{file0, file1})
 
 	fmt.Printf("https://%s.ipfs.dweb.link\n", cid)
 }

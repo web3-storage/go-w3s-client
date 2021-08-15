@@ -2,10 +2,11 @@ package w3s
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
-	"os"
 	"sync"
 	"time"
 
@@ -15,7 +16,7 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
-	files "github.com/ipfs/go-ipfs-files"
+	ipfsfiles "github.com/ipfs/go-ipfs-files"
 	ipld "github.com/ipfs/go-ipld-format"
 	dag "github.com/ipfs/go-merkledag"
 	"github.com/ipfs/ipfs-cluster/adder"
@@ -25,19 +26,17 @@ import (
 
 const targetChunkSize = 1024 * 1024 * 10
 
-// Option is an option configuring a web3.storage client.
-type Option func(cfg *clientConfig) error
-
 // Client is a HTTP API client to the web3.storage service.
 type Client interface {
 	Get(context.Context, cid.Cid) (GetResponse, error)
-	Put(context.Context, files.Directory) (cid.Cid, error)
+	Put(context.Context, []fs.File, ...PutOption) (cid.Cid, error)
+	PutCar(context.Context, io.Reader) (cid.Cid, error)
 	Status(context.Context, cid.Cid) (*Status, error)
 }
 
 // GetResponse is a response to a call to the Get method.
 type GetResponse interface {
-	Files() []os.File
+	Files() []fs.File
 }
 
 type PinStatus int
@@ -53,11 +52,11 @@ func (s PinStatus) String() string {
 }
 
 type Pin struct {
-	peerID   string
-	peerName string
-	region   string
-	status   PinStatus
-	updated  time.Time
+	PeerID   string    `json:"peerId"`
+	PeerName string    `json:"peerName"`
+	Region   string    `json:"region"`
+	Status   PinStatus `json:"status"`
+	Updated  time.Time `json:"updated"`
 }
 
 type DealStatus int
@@ -73,24 +72,24 @@ func (s DealStatus) String() string {
 }
 
 type Deal struct {
-	dealID            uint64
-	miner             string
-	status            DealStatus
-	pieceCid          cid.Cid
-	dataCid           cid.Cid
-	dataModelSelector string
-	activation        time.Time
-	created           time.Time
-	updated           time.Time
+	DealID            uint64     `json:"dealId"`
+	StorageProvider   string     `json:"storageProvider"`
+	Status            DealStatus `json:"status"`
+	PieceCid          cid.Cid    `json:"pieceCid"`
+	DataCid           cid.Cid    `json:"dataCid"`
+	DataModelSelector string     `json:"dataModelSelector"`
+	Activation        time.Time  `json:"activation"`
+	Created           time.Time  `json:"created"`
+	Updated           time.Time  `json:"updated"`
 }
 
 // Status is IPFS pin and Filecoin deal status for a given CID.
 type Status struct {
-	cid     string
-	dagSize uint64
-	created string
-	pins    []Pin
-	deals   []Deal
+	Cid     cid.Cid `json:"cid"`
+	DagSize uint64  `json:"dagSize"`
+	Created string  `json:"created"`
+	Pins    []Pin   `json:"pins"`
+	Deals   []Deal  `json:"deals"`
 }
 
 type clientConfig struct {
@@ -103,38 +102,6 @@ type client struct {
 	cfg *clientConfig
 	dag ipld.DAGService
 	hc  *http.Client
-}
-
-// WithEndpoint sets the URL of the root API when making requests (default
-// https://api.web3.storage).
-func WithEndpoint(endpoint string) Option {
-	return func(cfg *clientConfig) error {
-		if endpoint != "" {
-			cfg.endpoint = endpoint
-		}
-		return nil
-	}
-}
-
-// WithToken sets the auth token to use in the Authorization header when making
-// requests to the API.
-func WithToken(token string) Option {
-	return func(cfg *clientConfig) error {
-		cfg.token = token
-		return nil
-	}
-}
-
-// WithDatastore sets the underlying datastore to use when reading or writing
-// DAG block data. The default is to use a new in-memory store per Get/Put
-// request.
-func WithDatastore(ds ds.Batching) Option {
-	return func(cfg *clientConfig) error {
-		if ds != nil {
-			cfg.ds = ds
-		}
-		return nil
-	}
 }
 
 // NewClient creates a new web3.storage API client.
@@ -165,21 +132,29 @@ func (c *client) newMemDag() ipld.DAGService {
 }
 
 // TODO: retry
-func (c *client) sendCar(r io.Reader) error {
-	req, err := http.NewRequest("POST", c.cfg.endpoint+"/car", r)
+func (c *client) sendCar(ctx context.Context, r io.Reader) (cid.Cid, error) {
+	req, err := http.NewRequestWithContext(ctx, "POST", c.cfg.endpoint+"/car", r)
 	if err != nil {
-		return err
+		return cid.Undef, err
 	}
 	req.Header.Add("Content-Type", "application/car")
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.cfg.token))
 	res, err := c.hc.Do(req)
 	if err != nil {
-		return err
+		return cid.Undef, err
 	}
 	if res.StatusCode != 200 {
-		return fmt.Errorf("unexpected response status: %d", res.StatusCode)
+		return cid.Undef, fmt.Errorf("unexpected response status: %d", res.StatusCode)
 	}
-	return nil
+	d := json.NewDecoder(res.Body)
+	var out struct {
+		Cid cid.Cid `json:"cid"`
+	}
+	err = d.Decode(&out)
+	if err != nil {
+		return cid.Undef, err
+	}
+	return out.Cid, nil
 }
 
 func (c *client) Get(ctx context.Context, cid cid.Cid) (GetResponse, error) {
@@ -194,28 +169,71 @@ func (clusterDagService) Finalize(ctx context.Context, cid cid.Cid) (cid.Cid, er
 	return cid, nil
 }
 
-func (c *client) Put(ctx context.Context, dir files.Directory) (cid.Cid, error) {
+func convertToIpfsDirectory(files []fs.File, fsys fs.FS) (ipfsfiles.Directory, error) {
+	var entries []ipfsfiles.DirEntry
+	for _, f := range files {
+		info, err := f.Stat()
+		if err != nil {
+			return nil, err
+		}
+		n, err := NewFsNode("", f, info, fsys)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, ipfsfiles.FileEntry(info.Name(), n))
+	}
+	return ipfsfiles.NewSliceDirectory(entries), nil
+}
+
+type putConfig struct {
+	fsys fs.FS
+}
+
+// Put uploads files to Web3.Storage.
+func (c *client) Put(ctx context.Context, files []fs.File, options ...PutOption) (cid.Cid, error) {
+	var cfg putConfig
+	for _, opt := range options {
+		if err := opt(&cfg); err != nil {
+			return cid.Undef, err
+		}
+	}
+
 	dag := c.dag
 	if dag == nil {
 		dag = c.newMemDag()
 	}
 
 	params := api.DefaultAddParams()
+	params.Chunker = "size-1048576"
+	// TODO: Maxlinks: 1024
 	params.CidVersion = 1
 	params.RawLeaves = true
 	params.Wrap = true
 
+	// If only 1 file, and that file is a dir, do not wrap in another.
+	if len(files) == 1 {
+		info, err := files[0].Stat()
+		if err != nil {
+			return cid.Undef, err
+		}
+		if info.IsDir() {
+			params.Wrap = false
+		}
+	}
+
 	a := adder.New(&clusterDagService{dag}, params, nil)
+
+	dir, err := convertToIpfsDirectory(files, cfg.fsys)
+	if err != nil {
+		return cid.Undef, err
+	}
+
 	root, err := a.FromFiles(ctx, dir)
 	if err != nil {
 		return cid.Undef, err
 	}
 
 	carReader, carWriter := io.Pipe()
-	carChunks := make(chan io.Reader)
-
-	var wg sync.WaitGroup
-	wg.Add(1)
 
 	go func() {
 		err = car.WriteCar(ctx, dag, []cid.Cid{root}, carWriter)
@@ -226,20 +244,32 @@ func (c *client) Put(ctx context.Context, dir files.Directory) (cid.Cid, error) 
 		carWriter.Close()
 	}()
 
+	return c.PutCar(ctx, carReader)
+}
+
+// PutCar uploads a CAR (Content Addressable Archive) to Web3.Storage.
+func (c *client) PutCar(ctx context.Context, car io.Reader) (cid.Cid, error) {
+	carChunks := make(chan io.Reader)
+
+	var root cid.Cid
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	var sendErr error
 	go func() {
 		defer wg.Done()
 		for r := range carChunks {
 			// TODO: concurrency
-			err := c.sendCar(r)
+			c, err := c.sendCar(ctx, r)
 			if err != nil {
 				sendErr = err
 				break
 			}
+			root = c
 		}
 	}()
 
-	err = carbites.Split(ctx, carReader, targetChunkSize, carbites.Treewalk, carChunks)
+	err := carbites.Split(ctx, car, targetChunkSize, carbites.Treewalk, carChunks)
 	if err != nil {
 		return cid.Undef, err
 	}
@@ -261,4 +291,11 @@ func (c *client) Status(ctx context.Context, cid cid.Cid) (*Status, error) {
 	if res.StatusCode != 200 {
 		return nil, fmt.Errorf("unexpected response status: %d", res.StatusCode)
 	}
+	d := json.NewDecoder(res.Body)
+	var s Status
+	err = d.Decode(&s)
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
 }
