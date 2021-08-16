@@ -20,7 +20,19 @@ func main() {
 	file0, _ := os.Open("pinpie.jpg")
 	file1, _ := os.Open("donotresist.jpg")
 
-	cid, _ := c.Put(context.Background(), []fs.File{file0, file1})
+	cid, err := c.Put(context.Background(), []fs.File{file0, file1})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 
-	fmt.Printf("https://%s.ipfs.dweb.link\n", cid)
+	fmt.Printf("https://%v.ipfs.dweb.link\n", cid)
+
+	s, err := c.Status(context.Background(), cid)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Printf("%+v", s)
 }

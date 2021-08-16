@@ -14,5 +14,5 @@ require (
 	github.com/ipfs/go-merkledag v0.3.2
 	github.com/ipfs/ipfs-cluster v0.14.0
 	github.com/ipld/go-car v0.3.1
-	github.com/spf13/afero v1.6.0
+	github.com/libp2p/go-libp2p-core v0.9.0
 )

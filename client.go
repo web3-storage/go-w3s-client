@@ -22,6 +22,7 @@ import (
 	"github.com/ipfs/ipfs-cluster/adder"
 	"github.com/ipfs/ipfs-cluster/api"
 	car "github.com/ipld/go-car"
+	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
 const targetChunkSize = 1024 * 1024 * 10
@@ -52,7 +53,7 @@ func (s PinStatus) String() string {
 }
 
 type Pin struct {
-	PeerID   string    `json:"peerId"`
+	PeerID   peer.ID   `json:"peerId"`
 	PeerName string    `json:"peerName"`
 	Region   string    `json:"region"`
 	Status   PinStatus `json:"status"`
@@ -85,12 +86,23 @@ type Deal struct {
 
 // Status is IPFS pin and Filecoin deal status for a given CID.
 type Status struct {
-	Cid     cid.Cid `json:"cid"`
-	DagSize uint64  `json:"dagSize"`
-	Created string  `json:"created"`
-	Pins    []Pin   `json:"pins"`
-	Deals   []Deal  `json:"deals"`
+	Cid     cid.Cid   `json:"cid"`
+	DagSize uint64    `json:"dagSize"`
+	Created time.Time `json:"created"`
+	Pins    []Pin     `json:"pins"`
+	Deals   []Deal    `json:"deals"`
 }
+
+// func (s *Status) UnmarshalJSON(b []byte) error {
+// 	var out struct {
+// 		cid     string
+// 		dagSize uint64
+// 		created string
+// 		pins
+// 		deals
+// 	}
+// 	return nil
+// }
 
 type clientConfig struct {
 	token    string
@@ -148,13 +160,13 @@ func (c *client) sendCar(ctx context.Context, r io.Reader) (cid.Cid, error) {
 	}
 	d := json.NewDecoder(res.Body)
 	var out struct {
-		Cid cid.Cid `json:"cid"`
+		Cid string `json:"cid"`
 	}
 	err = d.Decode(&out)
 	if err != nil {
 		return cid.Undef, err
 	}
-	return out.Cid, nil
+	return cid.Parse(out.Cid)
 }
 
 func (c *client) Get(ctx context.Context, cid cid.Cid) (GetResponse, error) {

@@ -20,10 +20,22 @@ type fsDirNode struct {
 	info fs.FileInfo
 }
 
-type basicFs struct{}
+type osFs struct{}
 
-func (fs *basicFs) Open(name string) (fs.File, error) {
+func (fs *osFs) Open(name string) (fs.File, error) {
 	return os.Open(name)
+}
+
+func (fs *osFs) ReadDir(name string) ([]fs.DirEntry, error) {
+	return os.ReadDir(name)
+}
+
+func (fs *osFs) ReadFile(name string) ([]byte, error) {
+	return os.ReadFile(name)
+}
+
+func (fs *osFs) Stat(name string) (fs.FileInfo, error) {
+	return os.Stat(name)
 }
 
 // NewFsNode creates a new files.Node that is backed by an fs.File.
@@ -37,31 +49,39 @@ func NewFsNode(path string, f fs.File, fi fs.FileInfo, fsys fs.FS) (files.Node, 
 	}
 
 	if fsys == nil {
-		fsys = &basicFs{}
+		fsys = &osFs{}
 	}
 
 	if fi.IsDir() {
-		d, ok := f.(fs.ReadDirFile)
-		if !ok {
-			return nil, fmt.Errorf("directory not readable: %s", path)
+		if d, ok := f.(fs.ReadDirFile); ok {
+			ents, err := d.ReadDir(0)
+			if err != nil {
+				return nil, err
+			}
+			return &fsDirNode{fsys, path, ents, f, fi}, nil
 		}
 
-		ents, err := d.ReadDir(0)
-		if err != nil {
-			return nil, err
+		if dfsys, ok := fsys.(fs.ReadDirFS); ok {
+			ents, err := dfsys.ReadDir(path)
+			if err != nil {
+				return nil, err
+			}
+			return &fsDirNode{fsys, path, ents, f, fi}, nil
 		}
 
-		return &fsDirNode{fsys, path, ents, f, fi}, nil
+		return nil, fmt.Errorf("directory not readable: %s", path)
 	}
 
 	return files.NewReaderStatFile(f, fi), nil
 }
 
 func (f *fsDirNode) Entries() files.DirIterator {
-	return &serialIterator{
-		path:   f.path,
-		files:  f.files,
-		filter: f.filter,
+	return &fsDirIterator{
+		fsys: f.fsys,
+		path: f.path,
+		ents: f.ents,
+		file: f.file,
+		info: f.info,
 	}
 }
 
@@ -100,60 +120,62 @@ func (n *fsDirNode) Size() (int64, error) {
 	return du, err
 }
 
-type serialIterator struct {
-	files  []os.FileInfo
-	path   string
-	filter *files.Filter
+type fsDirIterator struct {
+	fsys fs.FS
+	path string
+	ents []fs.DirEntry
+	file fs.File
+	info fs.FileInfo
 
 	curName string
-	curFile files.Node
+	curNode files.Node
 
 	err error
 }
 
-func (it *serialIterator) Name() string {
+func (it *fsDirIterator) Name() string {
 	return it.curName
 }
 
-func (it *serialIterator) Node() files.Node {
-	return it.curFile
+func (it *fsDirIterator) Node() files.Node {
+	return it.curNode
 }
 
-func (it *serialIterator) Next() bool {
+func (it *fsDirIterator) Next() bool {
 	// if there aren't any files left in the root directory, we're done
-	if len(it.files) == 0 {
+	if len(it.ents) == 0 {
 		return false
 	}
 
-	stat := it.files[0]
-	it.files = it.files[1:]
-	for it.filter.ShouldExclude(stat) {
-		if len(it.files) == 0 {
-			return false
-		}
-
-		stat = it.files[0]
-		it.files = it.files[1:]
-	}
+	ent := it.ents[0]
+	it.ents = it.ents[1:]
+	path := filepath.ToSlash(filepath.Join(it.path, ent.Name()))
 
 	// open the next file
-	filePath := filepath.ToSlash(filepath.Join(it.path, stat.Name()))
-
-	// recursively call the constructor on the next file
-	// if it's a regular file, we will open it as a ReaderFile
-	// if it's a directory, files in it will be opened serially
-	sf, err := files.NewSerialFileWithFilter(filePath, it.filter, stat)
+	f, err := it.fsys.Open(path)
 	if err != nil {
 		it.err = err
 		return false
 	}
 
-	it.curName = stat.Name()
-	it.curFile = sf
+	fi, err := ent.Info()
+	if err != nil {
+		it.err = err
+		return false
+	}
+
+	n, err := NewFsNode(path, f, fi, it.fsys)
+	if err != nil {
+		it.err = err
+		return false
+	}
+
+	it.curName = ent.Name()
+	it.curNode = n
 	return true
 }
 
-func (it *serialIterator) Err() error {
+func (it *fsDirIterator) Err() error {
 	return it.err
 }
 
