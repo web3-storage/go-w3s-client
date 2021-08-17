@@ -3,9 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 
-	files "github.com/ipfs/go-ipfs-files"
+	"github.com/ipfs/go-cid"
 	"github.com/web3-storage/go-w3s-client"
 )
 
@@ -17,15 +18,32 @@ func main() {
 		w3s.WithToken(os.Getenv("TOKEN")),
 	)
 
+	cid := put(c)
+	status(c, cid)
+
+	// cid, _ := cid.Parse("bafybeig7qnlzyregxe2m63b4kkpx3ujqm5bwmn5wtvtftp7j27tmdtznji")
+	// status(c, cid)
+}
+
+func put(c w3s.Client) cid.Cid {
 	file0, _ := os.Open("pinpie.jpg")
 	file1, _ := os.Open("donotresist.jpg")
 
-	dir := files.NewMapDirectory(map[string]files.Node{
-		"pinpie.jpg":      files.NewReaderFile(file0),
-		"donotresist.jpg": files.NewReaderFile(file1),
-	})
+	cid, err := c.Put(context.Background(), []fs.File{file0, file1})
+	if err != nil {
+		panic(err)
+	}
 
-	cid, _ := c.Put(context.Background(), dir)
+	fmt.Printf("https://%v.ipfs.dweb.link\n", cid)
+	return cid
+}
 
-	fmt.Printf("https://%s.ipfs.dweb.link\n", cid)
+func status(c w3s.Client, cid cid.Cid) w3s.Status {
+	s, err := c.Status(context.Background(), cid)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("Status: %+v", s)
+	return s
 }
