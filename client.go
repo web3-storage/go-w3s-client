@@ -19,11 +19,11 @@ import (
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	ipfsfiles "github.com/ipfs/go-ipfs-files"
 	ipld "github.com/ipfs/go-ipld-format"
-	dag "github.com/ipfs/go-merkledag"
-	"github.com/ipfs/ipfs-cluster/adder"
+	"github.com/ipfs/go-merkledag"
 	"github.com/ipfs/ipfs-cluster/api"
 	car "github.com/ipld/go-car"
 	peer "github.com/libp2p/go-libp2p-core/peer"
+	"github.com/web3-storage/go-w3s-client/adder"
 )
 
 const targetChunkSize = 1024 * 1024 * 10
@@ -258,7 +258,7 @@ func NewClient(options ...Option) (Client, error) {
 	c := client{cfg: &cfg, hc: &http.Client{}}
 	if cfg.ds != nil {
 		bs := bserv.New(blockstore.NewBlockstore(cfg.ds), nil)
-		c.dag = dag.NewDAGService(bs)
+		c.dag = merkledag.NewDAGService(bs)
 	}
 	return &c, nil
 }
@@ -266,7 +266,7 @@ func NewClient(options ...Option) (Client, error) {
 func (c *client) newMemDag() ipld.DAGService {
 	ds := dssync.MutexWrap(ds.NewMapDatastore())
 	bs := bserv.New(blockstore.NewBlockstore(ds), nil)
-	return dag.NewDAGService(bs)
+	return merkledag.NewDAGService(bs)
 }
 
 // TODO: retry
@@ -297,14 +297,6 @@ func (c *client) sendCar(ctx context.Context, r io.Reader) (cid.Cid, error) {
 
 func (c *client) Get(ctx context.Context, cid cid.Cid) (GetResponse, error) {
 	return nil, fmt.Errorf("not implemented")
-}
-
-type clusterDagService struct {
-	ipld.DAGService
-}
-
-func (clusterDagService) Finalize(ctx context.Context, cid cid.Cid) (cid.Cid, error) {
-	return cid, nil
 }
 
 func convertToIpfsDirectory(files []fs.File, fsys fs.FS) (ipfsfiles.Directory, error) {
@@ -341,13 +333,7 @@ func (c *client) Put(ctx context.Context, files []fs.File, options ...PutOption)
 		dag = c.newMemDag()
 	}
 
-	params := api.DefaultAddParams()
-	params.Chunker = "size-1048576"
-	// TODO: Maxlinks: 1024
-	params.CidVersion = 1
-	params.RawLeaves = true
-	params.Wrap = true
-
+	wrap := true
 	// If only 1 file, and that file is a dir, do not wrap in another.
 	if len(files) == 1 {
 		info, err := files[0].Stat()
@@ -355,20 +341,42 @@ func (c *client) Put(ctx context.Context, files []fs.File, options ...PutOption)
 			return cid.Undef, err
 		}
 		if info.IsDir() {
-			params.Wrap = false
+			wrap = false
 		}
 	}
 
-	a := adder.New(&clusterDagService{dag}, params, nil)
-
+	// TODO: do we even need to convert? Can we just pass fs.File to an adder?
 	dir, err := convertToIpfsDirectory(files, cfg.fsys)
 	if err != nil {
 		return cid.Undef, err
 	}
 
-	root, err := a.FromFiles(ctx, dir)
+	if wrap {
+		dir = ipfsfiles.NewSliceDirectory(
+			[]ipfsfiles.DirEntry{ipfsfiles.FileEntry("", dir)},
+		)
+	}
+
+	dagFmtr, err := adder.NewAdder(ctx, dag)
 	if err != nil {
 		return cid.Undef, err
+	}
+
+	it := dir.Entries()
+	var root cid.Cid
+	for it.Next() {
+		select {
+		case <-ctx.Done():
+			return cid.Undef, ctx.Err()
+		default:
+			root, err = dagFmtr.Add(it.Name(), it.Node())
+			if err != nil {
+				return cid.Undef, err
+			}
+		}
+	}
+	if it.Err() != nil {
+		return cid.Undef, it.Err()
 	}
 
 	carReader, carWriter := io.Pipe()
