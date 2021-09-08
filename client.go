@@ -17,11 +17,10 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
-	ipfsfiles "github.com/ipfs/go-ipfs-files"
 	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-merkledag"
 	"github.com/ipfs/ipfs-cluster/api"
-	car "github.com/ipld/go-car"
+	"github.com/ipld/go-car"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	"github.com/web3-storage/go-w3s-client/adder"
 )
@@ -32,7 +31,7 @@ const iso8601 = "2006-01-02T15:04:05Z0700"
 // Client is a HTTP API client to the web3.storage service.
 type Client interface {
 	Get(context.Context, cid.Cid) (GetResponse, error)
-	Put(context.Context, []fs.File, ...PutOption) (cid.Cid, error)
+	Put(context.Context, fs.File, ...PutOption) (cid.Cid, error)
 	PutCar(context.Context, io.Reader) (cid.Cid, error)
 	Status(context.Context, cid.Cid) (Status, error)
 }
@@ -299,28 +298,16 @@ func (c *client) Get(ctx context.Context, cid cid.Cid) (GetResponse, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
-func convertToIpfsDirectory(files []fs.File, fsys fs.FS) (ipfsfiles.Directory, error) {
-	var entries []ipfsfiles.DirEntry
-	for _, f := range files {
-		info, err := f.Stat()
-		if err != nil {
-			return nil, err
-		}
-		n, err := NewFsNode("", f, info, fsys)
-		if err != nil {
-			return nil, err
-		}
-		entries = append(entries, ipfsfiles.FileEntry(info.Name(), n))
-	}
-	return ipfsfiles.NewSliceDirectory(entries), nil
-}
-
 type putConfig struct {
-	fsys fs.FS
+	fsys    fs.FS
+	dirname string
 }
 
-// Put uploads files to Web3.Storage.
-func (c *client) Put(ctx context.Context, files []fs.File, options ...PutOption) (cid.Cid, error) {
+// Put uploads files to Web3.Storage. The file argument can be a single file or
+// a directory. If a directory is passed and the directory does NOT implement
+// fs.ReadDirFile then the WithDirname option should be passed (or the current
+// process working directory will be used).
+func (c *client) Put(ctx context.Context, file fs.File, options ...PutOption) (cid.Cid, error) {
 	var cfg putConfig
 	for _, opt := range options {
 		if err := opt(&cfg); err != nil {
@@ -333,28 +320,9 @@ func (c *client) Put(ctx context.Context, files []fs.File, options ...PutOption)
 		dag = c.newMemDag()
 	}
 
-	wrap := true
-	// If only 1 file, and that file is a dir, do not wrap in another.
-	if len(files) == 1 {
-		info, err := files[0].Stat()
-		if err != nil {
-			return cid.Undef, err
-		}
-		if info.IsDir() {
-			wrap = false
-		}
-	}
-
-	// TODO: do we even need to convert? Can we just pass fs.File to an adder?
-	dir, err := convertToIpfsDirectory(files, cfg.fsys)
+	info, err := file.Stat()
 	if err != nil {
 		return cid.Undef, err
-	}
-
-	if wrap {
-		dir = ipfsfiles.NewSliceDirectory(
-			[]ipfsfiles.DirEntry{ipfsfiles.FileEntry("", dir)},
-		)
 	}
 
 	dagFmtr, err := adder.NewAdder(ctx, dag)
@@ -362,22 +330,30 @@ func (c *client) Put(ctx context.Context, files []fs.File, options ...PutOption)
 		return cid.Undef, err
 	}
 
-	it := dir.Entries()
-	var root cid.Cid
-	for it.Next() {
-		select {
-		case <-ctx.Done():
-			return cid.Undef, ctx.Err()
-		default:
-			root, err = dagFmtr.Add(it.Name(), it.Node())
-			if err != nil {
-				return cid.Undef, err
-			}
+	root, err := dagFmtr.Add(file, cfg.dirname, cfg.fsys)
+	if err != nil {
+		return cid.Undef, err
+	}
+
+	// If file is a dir, do not wrap in another.
+	if info.IsDir() {
+		mr, err := dagFmtr.MfsRoot()
+		if err != nil {
+			return cid.Undef, err
 		}
+		rdir := mr.GetDirectory()
+		cdir, err := rdir.Child(info.Name())
+		if err != nil {
+			return cid.Undef, err
+		}
+		cnode, err := cdir.GetNode()
+		if err != nil {
+			return cid.Undef, err
+		}
+		root = cnode.Cid()
 	}
-	if it.Err() != nil {
-		return cid.Undef, it.Err()
-	}
+
+	// fmt.Println("root CID", root)
 
 	carReader, carWriter := io.Pipe()
 

@@ -53,3 +53,14 @@ func WithFs(fsys fs.FS) PutOption {
 		return nil
 	}
 }
+
+// WithDirname sets the root directory path, for use when the provided file is a
+// directory and does NOT implement fs.ReadDirFile. The default is "", which
+// will resolve to the current working directory if the file system interface is
+// the default (the OS).
+func WithDirname(dirname string) PutOption {
+	return func(cfg *putConfig) error {
+		cfg.dirname = dirname
+		return nil
+	}
+}
