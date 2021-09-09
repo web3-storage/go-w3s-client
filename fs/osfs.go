@@ -1,4 +1,4 @@
-package adder
+package fs
 
 import (
 	"io/fs"

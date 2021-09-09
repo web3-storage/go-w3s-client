@@ -17,6 +17,7 @@ import (
 	unixfs "github.com/ipfs/go-unixfs"
 	balanced "github.com/ipfs/go-unixfs/importer/balanced"
 	ihelper "github.com/ipfs/go-unixfs/importer/helpers"
+	w3fs "github.com/web3-storage/go-w3s-client/fs"
 )
 
 const chnkr = "size-1048576"
@@ -44,7 +45,7 @@ type Adder struct {
 
 func (adder *Adder) Add(file fs.File, dirname string, fsys fs.FS) (cid.Cid, error) {
 	if fsys == nil {
-		fsys = &OsFs{}
+		fsys = &w3fs.OsFs{}
 	}
 
 	fi, err := file.Stat()
@@ -229,22 +230,25 @@ func (adder *Adder) addDir(path string, dir fs.File, dirname string, fsys fs.FS,
 	var err error
 	if d, ok := dir.(fs.ReadDirFile); ok {
 		ents, err = d.ReadDir(0)
-		if err != nil {
-			return fmt.Errorf("file reading directory %s: %w", gopath.Join(dirname, path), err)
-		}
 	} else if dfsys, ok := fsys.(fs.ReadDirFS); ok {
 		ents, err = dfsys.ReadDir(gopath.Join(dirname, path))
-		if err != nil {
-			return fmt.Errorf("filesystem reading directory %s: %w", gopath.Join(dirname, path), err)
-		}
 	} else {
 		return fmt.Errorf("directory not readable: %s", gopath.Join(dirname, path))
 	}
+	if err != nil {
+		return fmt.Errorf("reading directory %s: %w", gopath.Join(dirname, path), err)
+	}
 
 	for _, ent := range ents {
-		f, err := fsys.Open(gopath.Join(dirname, path, ent.Name()))
+		var f fs.File
+		// If the DirEntry implements Opener then use it, otherwise open using filesystem.
+		if ef, ok := ent.(w3fs.Opener); ok {
+			f, err = ef.Open()
+		} else {
+			f, err = fsys.Open(gopath.Join(dirname, path, ent.Name()))
+		}
 		if err != nil {
-			return fmt.Errorf("filesystem opening file %s: %w", gopath.Join(dirname, path, ent.Name()), err)
+			return fmt.Errorf("opening file %s: %w", gopath.Join(dirname, path, ent.Name()), err)
 		}
 
 		fi, err := ent.Info()
