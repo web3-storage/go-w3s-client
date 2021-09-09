@@ -262,7 +262,7 @@ func NewClient(options ...Option) (Client, error) {
 	return &c, nil
 }
 
-func (c *client) newMemDag() ipld.DAGService {
+func newMemDag() ipld.DAGService {
 	ds := dssync.MutexWrap(ds.NewMapDatastore())
 	bs := bserv.New(blockstore.NewBlockstore(ds), nil)
 	return merkledag.NewDAGService(bs)
@@ -317,7 +317,7 @@ func (c *client) Put(ctx context.Context, file fs.File, options ...PutOption) (c
 
 	dag := c.dag
 	if dag == nil {
-		dag = c.newMemDag()
+		dag = newMemDag()
 	}
 
 	info, err := file.Stat()
