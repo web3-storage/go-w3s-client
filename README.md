@@ -14,14 +14,19 @@ go get github.com/web3-storage/go-w3s-client
 package main
 
 import (
+    "os"
     "github.com/web3-storage/go-w3s-client"
 )
 
 func main() {
-    c := w3s.NewClient(w3s.WithToken("<AUTH_TOKEN>"))
-    // WIP
+    c, _ := w3s.NewClient(w3s.WithToken("<AUTH_TOKEN>"))
+    f, _ := os.Open("images/pinpie.jpg")
+    cid, _ := c.Put(context.Background(), f)
+	fmt.Printf("https://%v.ipfs.dweb.link\n", cid)
 }
 ```
+
+See [example](./example) for more.
 
 ## API
 
