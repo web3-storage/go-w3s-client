@@ -12,13 +12,16 @@ import (
 
 	"github.com/alanshaw/go-carbites"
 	"github.com/filecoin-project/go-address"
+	"github.com/ipfs/go-blockservice"
 	bserv "github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
+	files "github.com/ipfs/go-ipfs-files"
 	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-merkledag"
+	unixfile "github.com/ipfs/go-unixfs/file"
 	"github.com/ipfs/ipfs-cluster/api"
 	"github.com/ipld/go-car"
 	peer "github.com/libp2p/go-libp2p-core/peer"
@@ -30,15 +33,60 @@ const iso8601 = "2006-01-02T15:04:05Z0700"
 
 // Client is a HTTP API client to the web3.storage service.
 type Client interface {
-	Get(context.Context, cid.Cid) (GetResponse, error)
+	Get(context.Context, cid.Cid) (*Web3Response, error)
 	Put(context.Context, fs.File, ...PutOption) (cid.Cid, error)
 	PutCar(context.Context, io.Reader) (cid.Cid, error)
-	Status(context.Context, cid.Cid) (Status, error)
+	Status(context.Context, cid.Cid) (*Status, error)
 }
 
-// GetResponse is a response to a call to the Get method.
-type GetResponse interface {
-	Files() []fs.File
+// Web3Response is a response to a call to the Get method.
+type Web3Response struct {
+	*http.Response
+}
+
+// Files consumes the HTTP response and collects a slice of all UnixFs files.
+func (r *Web3Response) Files() (fs.File, error) {
+	cr, err := car.NewCarReader(r.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	bsvc := newMemBlockService()
+	for {
+		b, err := cr.Next()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, err
+		}
+		err = bsvc.AddBlock(b)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	ctx := r.Request.Context()
+	dsvc := merkledag.NewDAGService(bsvc)
+
+	rootCid := cr.Header.Roots[0]
+	rootNd, err := dsvc.Get(ctx, rootCid)
+	if err != nil {
+		return nil, err
+	}
+
+	f, err := unixfile.NewUnixfsFile(ctx, dsvc, rootNd)
+	if err != nil {
+		return nil, err
+	}
+
+	return unixfsToFs(f)
+}
+
+func unixfsToFs(n files.Node) (fs.File, error) {
+	if d, ok := n.(files.Directory); ok {
+
+	}
 }
 
 type PinStatus int
@@ -262,9 +310,13 @@ func NewClient(options ...Option) (Client, error) {
 	return &c, nil
 }
 
-func newMemDag() ipld.DAGService {
+func newMemBlockService() blockservice.BlockService {
 	ds := dssync.MutexWrap(ds.NewMapDatastore())
-	bs := bserv.New(blockstore.NewBlockstore(ds), nil)
+	return bserv.New(blockstore.NewBlockstore(ds), nil)
+}
+
+func newMemDag() ipld.DAGService {
+	bs := newMemBlockService()
 	return merkledag.NewDAGService(bs)
 }
 
@@ -294,8 +346,14 @@ func (c *client) sendCar(ctx context.Context, r io.Reader) (cid.Cid, error) {
 	return cid.Parse(out.Cid)
 }
 
-func (c *client) Get(ctx context.Context, cid cid.Cid) (GetResponse, error) {
-	return nil, fmt.Errorf("not implemented")
+func (c *client) Get(ctx context.Context, cid cid.Cid) (*Web3Response, error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/car/%s", c.cfg.endpoint, cid), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.cfg.token))
+	res, err := c.hc.Do(req)
+	return &Web3Response{res}, err
 }
 
 type putConfig struct {
@@ -400,24 +458,24 @@ func (c *client) PutCar(ctx context.Context, car io.Reader) (cid.Cid, error) {
 	return root, sendErr
 }
 
-func (c *client) Status(ctx context.Context, cid cid.Cid) (Status, error) {
-	var s Status
+func (c *client) Status(ctx context.Context, cid cid.Cid) (*Status, error) {
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/status/%s", c.cfg.endpoint, cid), nil)
 	if err != nil {
-		return s, err
+		return nil, err
 	}
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.cfg.token))
 	res, err := c.hc.Do(req)
 	if err != nil {
-		return s, err
+		return nil, err
 	}
 	if res.StatusCode != 200 {
-		return s, fmt.Errorf("unexpected response status: %d", res.StatusCode)
+		return nil, fmt.Errorf("unexpected response status: %d", res.StatusCode)
 	}
+	var s Status
 	d := json.NewDecoder(res.Body)
 	err = d.Decode(&s)
 	if err != nil {
-		return s, err
+		return nil, err
 	}
-	return s, nil
+	return &s, nil
 }
