@@ -1,15 +1,100 @@
 package adapter
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"io/fs"
+	"strings"
 	"time"
 
+	"github.com/ipfs/go-blockservice"
+	"github.com/ipfs/go-cid"
+	bsfetcher "github.com/ipfs/go-fetcher/impl/blockservice"
 	files "github.com/ipfs/go-ipfs-files"
+	format "github.com/ipfs/go-ipld-format"
+	"github.com/ipfs/go-merkledag"
+	path "github.com/ipfs/go-path"
+	pathresolver "github.com/ipfs/go-path/resolver"
+	unixfile "github.com/ipfs/go-unixfs/file"
+	"github.com/ipfs/go-unixfsnode"
+	dagpb "github.com/ipld/go-codec-dagpb"
+	"github.com/ipld/go-ipld-prime"
+	basicnode "github.com/ipld/go-ipld-prime/node/basic"
+	"github.com/ipld/go-ipld-prime/schema"
 )
 
-type unixFsFile struct {
-	path string
+type unixfsFs struct {
+	ctx      context.Context
+	rootCid  cid.Cid
+	bsvc     blockservice.BlockService
+	dsvc     format.DAGService
+	resolver *pathresolver.Resolver
+}
+
+func NewFs(root cid.Cid, bsvc blockservice.BlockService) (fs.FS, error) {
+	return NewFsWithContext(context.Background(), root, bsvc)
+}
+
+func NewFsWithContext(ctx context.Context, root cid.Cid, bsvc blockservice.BlockService) (fs.FS, error) {
+	ipldFetcher := bsfetcher.NewFetcherConfig(bsvc)
+	ipldFetcher.PrototypeChooser = dagpb.AddSupportToChooser(func(lnk ipld.Link, lnkCtx ipld.LinkContext) (ipld.NodePrototype, error) {
+		if tlnkNd, ok := lnkCtx.LinkNode.(schema.TypedLinkNode); ok {
+			return tlnkNd.LinkTargetNodePrototype(), nil
+		}
+		return basicnode.Prototype.Any, nil
+	})
+	unixFSFetcher := ipldFetcher.WithReifier(unixfsnode.Reify)
+
+	return &unixfsFs{
+		ctx:      ctx,
+		rootCid:  root,
+		bsvc:     bsvc,
+		dsvc:     merkledag.NewDAGService(bsvc),
+		resolver: pathresolver.NewBasicResolver(unixFSFetcher),
+	}, nil
+}
+
+func (fs *unixfsFs) Open(name string) (fs.File, error) {
+	var ipfsPath path.Path
+	if name == "/" {
+		ipfsPath = path.FromString("/ipfs/" + fs.rootCid.String())
+	} else {
+		if !strings.HasPrefix(name, "/") {
+			return nil, errors.New("path must start with \"/\"")
+		}
+		ipfsPath = path.FromString(fmt.Sprintf("/ipfs/%s%s", fs.rootCid, name))
+	}
+
+	cid, rest, err := fs.resolver.ResolveToLastNode(fs.ctx, ipfsPath)
+	if err != nil {
+		return nil, err
+	}
+	if len(rest) > 0 {
+		return nil, errors.New("cannot resolve to last node")
+	}
+
+	nd, err := fs.dsvc.Get(fs.ctx, cid)
+	if err != nil {
+		return nil, err
+	}
+
+	f, err := unixfile.NewUnixfsFile(fs.ctx, fs.dsvc, nd)
+	if err != nil {
+		return nil, err
+	}
+
+	_, fname, err := ipfsPath.PopLastSegment()
+	if err != nil {
+		return nil, err
+	}
+
+	return NewFile(fname, f)
+}
+
+var _ fs.FS = (*unixfsFs)(nil)
+
+type unixfsFile struct {
 	info fs.FileInfo
 	node files.Node
 }
@@ -21,8 +106,8 @@ func NewFile(name string, node files.Node) (fs.File, error) {
 		return nil, err
 	}
 	_, isDir := node.(files.Directory)
-	return &unixFsFile{
-		info: &unixFsFileInfo{
+	return &unixfsFile{
+		info: &unixfsFileInfo{
 			name:    name,
 			size:    size,
 			modTime: time.Now(),
@@ -32,23 +117,23 @@ func NewFile(name string, node files.Node) (fs.File, error) {
 	}, nil
 }
 
-func (f *unixFsFile) Stat() (fs.FileInfo, error) {
-	return f.info, nil
+func (uf *unixfsFile) Stat() (fs.FileInfo, error) {
+	return uf.info, nil
 }
 
-func (f *unixFsFile) Read(p []byte) (int, error) {
-	if ff, ok := f.node.(files.File); ok {
+func (uf *unixfsFile) Read(p []byte) (int, error) {
+	if ff, ok := uf.node.(files.File); ok {
 		return ff.Read(p)
 	}
 	return 0, errors.New("file not readable")
 }
 
-func (f *unixFsFile) Close() error {
-	return f.node.Close()
+func (uf *unixfsFile) Close() error {
+	return uf.node.Close()
 }
 
-func (f *unixFsFile) ReadDir(n int) ([]fs.DirEntry, error) {
-	fd, isDir := f.node.(files.Directory)
+func (uf *unixfsFile) ReadDir(n int) ([]fs.DirEntry, error) {
+	fd, isDir := uf.node.(files.Directory)
 	if !isDir {
 		return nil, errors.New("not a directory")
 	}
@@ -56,58 +141,80 @@ func (f *unixFsFile) ReadDir(n int) ([]fs.DirEntry, error) {
 	var ents []fs.DirEntry
 	it := fd.Entries()
 	for it.Next() {
-		node := it.Node()
-		NewFile(it.Name(), node)
+		f, err := NewFile(it.Name(), it.Node())
+		if err != nil {
+			return nil, err
+		}
+		i, err := f.Stat()
+		if err != nil {
+			return nil, err
+		}
+		ents = append(ents, &unixfsDirEntry{i})
 	}
 	if it.Err() != nil {
 		return nil, it.Err()
 	}
 
-	fl := len(d.files)
-	if n <= 0 || n > fl {
-		n = fl
-	}
-	var ents []fs.DirEntry
-	for i := 0; i < n; i++ {
-		inf, err := d.files[i].Stat()
-		if err != nil {
-			return nil, err
-		}
-		ents = append(ents, &DirEntry{file: d.files[i], info: inf})
-	}
 	return ents, nil
 }
 
-type unixFsFileInfo struct {
+var _ fs.File = (*unixfsFile)(nil)
+var _ fs.ReadDirFile = (*unixfsFile)(nil)
+
+type unixfsFileInfo struct {
 	name    string
 	size    int64
 	modTime time.Time
 	isDir   bool
 }
 
-func (i *unixFsFileInfo) Name() string {
+func (i *unixfsFileInfo) Name() string {
 	return i.name
 }
 
-func (i *unixFsFileInfo) Size() int64 {
+func (i *unixfsFileInfo) Size() int64 {
 	return i.size
 }
 
-func (i *unixFsFileInfo) Mode() fs.FileMode {
+func (i *unixfsFileInfo) Mode() fs.FileMode {
 	if i.isDir {
 		return fs.ModeDir | 0555
 	}
 	return fs.ModePerm
 }
 
-func (i *unixFsFileInfo) ModTime() time.Time {
+func (i *unixfsFileInfo) ModTime() time.Time {
 	return i.modTime
 }
 
-func (i *unixFsFileInfo) IsDir() bool {
+func (i *unixfsFileInfo) IsDir() bool {
 	return i.Mode().IsDir()
 }
 
-func (i *unixFsFileInfo) Sys() interface{} {
+func (i *unixfsFileInfo) Sys() interface{} {
 	return nil
 }
+
+var _ fs.FileInfo = (*unixfsFileInfo)(nil)
+
+type unixfsDirEntry struct {
+	info fs.FileInfo
+}
+
+func (e *unixfsDirEntry) Name() string {
+	return e.info.Name()
+}
+
+func (e *unixfsDirEntry) IsDir() bool {
+	return e.info.IsDir()
+}
+
+func (e *unixfsDirEntry) Type() fs.FileMode {
+	return e.info.Mode().Type()
+}
+
+func (e *unixfsDirEntry) Info() (fs.FileInfo, error) {
+	return e.info, nil
+}
+
+var _ fs.DirEntry = (*unixfsDirEntry)(nil)

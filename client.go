@@ -18,14 +18,12 @@ import (
 	ds "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
-	files "github.com/ipfs/go-ipfs-files"
-	ipld "github.com/ipfs/go-ipld-format"
 	"github.com/ipfs/go-merkledag"
-	unixfile "github.com/ipfs/go-unixfs/file"
 	"github.com/ipfs/ipfs-cluster/api"
 	"github.com/ipld/go-car"
 	peer "github.com/libp2p/go-libp2p-core/peer"
 	"github.com/web3-storage/go-w3s-client/adder"
+	w3http "github.com/web3-storage/go-w3s-client/http"
 )
 
 const targetChunkSize = 1024 * 1024 * 10
@@ -33,60 +31,10 @@ const iso8601 = "2006-01-02T15:04:05Z0700"
 
 // Client is a HTTP API client to the web3.storage service.
 type Client interface {
-	Get(context.Context, cid.Cid) (*Web3Response, error)
+	Get(context.Context, cid.Cid) (*w3http.Web3Response, error)
 	Put(context.Context, fs.File, ...PutOption) (cid.Cid, error)
 	PutCar(context.Context, io.Reader) (cid.Cid, error)
 	Status(context.Context, cid.Cid) (*Status, error)
-}
-
-// Web3Response is a response to a call to the Get method.
-type Web3Response struct {
-	*http.Response
-}
-
-// Files consumes the HTTP response and collects a slice of all UnixFs files.
-func (r *Web3Response) Files() (fs.File, error) {
-	cr, err := car.NewCarReader(r.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	bsvc := newMemBlockService()
-	for {
-		b, err := cr.Next()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return nil, err
-		}
-		err = bsvc.AddBlock(b)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	ctx := r.Request.Context()
-	dsvc := merkledag.NewDAGService(bsvc)
-
-	rootCid := cr.Header.Roots[0]
-	rootNd, err := dsvc.Get(ctx, rootCid)
-	if err != nil {
-		return nil, err
-	}
-
-	f, err := unixfile.NewUnixfsFile(ctx, dsvc, rootNd)
-	if err != nil {
-		return nil, err
-	}
-
-	return unixfsToFs(f)
-}
-
-func unixfsToFs(n files.Node) (fs.File, error) {
-	if d, ok := n.(files.Directory); ok {
-
-	}
 }
 
 type PinStatus int
@@ -284,9 +232,9 @@ type clientConfig struct {
 }
 
 type client struct {
-	cfg *clientConfig
-	dag ipld.DAGService
-	hc  *http.Client
+	cfg  *clientConfig
+	bsvc blockservice.BlockService
+	hc   *http.Client
 }
 
 // NewClient creates a new web3.storage API client.
@@ -304,20 +252,12 @@ func NewClient(options ...Option) (Client, error) {
 	}
 	c := client{cfg: &cfg, hc: &http.Client{}}
 	if cfg.ds != nil {
-		bs := bserv.New(blockstore.NewBlockstore(cfg.ds), nil)
-		c.dag = merkledag.NewDAGService(bs)
+		c.bsvc = bserv.New(blockstore.NewBlockstore(cfg.ds), nil)
+	} else {
+		ds := dssync.MutexWrap(ds.NewMapDatastore())
+		c.bsvc = bserv.New(blockstore.NewBlockstore(ds), nil)
 	}
 	return &c, nil
-}
-
-func newMemBlockService() blockservice.BlockService {
-	ds := dssync.MutexWrap(ds.NewMapDatastore())
-	return bserv.New(blockstore.NewBlockstore(ds), nil)
-}
-
-func newMemDag() ipld.DAGService {
-	bs := newMemBlockService()
-	return merkledag.NewDAGService(bs)
 }
 
 // TODO: retry
@@ -346,14 +286,14 @@ func (c *client) sendCar(ctx context.Context, r io.Reader) (cid.Cid, error) {
 	return cid.Parse(out.Cid)
 }
 
-func (c *client) Get(ctx context.Context, cid cid.Cid) (*Web3Response, error) {
+func (c *client) Get(ctx context.Context, cid cid.Cid) (*w3http.Web3Response, error) {
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/car/%s", c.cfg.endpoint, cid), nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.cfg.token))
 	res, err := c.hc.Do(req)
-	return &Web3Response{res}, err
+	return w3http.NewWeb3Response(res, c.bsvc), err
 }
 
 type putConfig struct {
@@ -373,16 +313,12 @@ func (c *client) Put(ctx context.Context, file fs.File, options ...PutOption) (c
 		}
 	}
 
-	dag := c.dag
-	if dag == nil {
-		dag = newMemDag()
-	}
-
 	info, err := file.Stat()
 	if err != nil {
 		return cid.Undef, err
 	}
 
+	dag := merkledag.NewDAGService(c.bsvc)
 	dagFmtr, err := adder.NewAdder(ctx, dag)
 	if err != nil {
 		return cid.Undef, err

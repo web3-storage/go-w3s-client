@@ -22,8 +22,10 @@ func main() {
 		panic(err)
 	}
 
-	cid := putSingleFile(c)
-	getStatusForCid(c, cid)
+	// cid := putSingleFile(c)
+	// getStatusForCid(c, cid)
+
+	getFiles(c)
 }
 
 func putSingleFile(c w3s.Client) cid.Cid {
@@ -90,4 +92,36 @@ func getStatusForCid(c w3s.Client, cid cid.Cid) {
 func getStatusForKnownCid(c w3s.Client) {
 	cid, _ := cid.Parse("bafybeig7qnlzyregxe2m63b4kkpx3ujqm5bwmn5wtvtftp7j27tmdtznji")
 	getStatusForCid(c, cid)
+}
+
+func getFiles(c w3s.Client) {
+	cid, _ := cid.Parse("bafybeide43vps6vt2oo7nbqfwn5zz6l2alyi64mym3sb7reqhmypjnmej4")
+
+	res, err := c.Get(context.Background(), cid)
+	if err != nil {
+		panic(err)
+	}
+
+	f, fsys, err := res.Files()
+	if err != nil {
+		panic(err)
+	}
+
+	info, err := f.Stat()
+	if err != nil {
+		panic(err)
+	}
+
+	if info.IsDir() {
+		err = fs.WalkDir(fsys, "/", func(path string, d fs.DirEntry, err error) error {
+			info, _ := d.Info()
+			fmt.Printf("%s (%d bytes)\n", path, info.Size())
+			return err
+		})
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		fmt.Printf("%s (%d bytes)\n", cid.String(), info.Size())
+	}
 }
