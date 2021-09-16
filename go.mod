@@ -1,6 +1,6 @@
 module github.com/web3-storage/go-w3s-client
 
-go 1.15
+go 1.16
 
 require (
 	github.com/alanshaw/go-carbites v0.3.0
