@@ -1,6 +1,6 @@
 # go-w3s-client
 
-⚠️ WIP. A client to the web3.storage API.
+A client to the Web3.Storage API.
 
 ## Install
 
@@ -14,6 +14,7 @@ go get github.com/web3-storage/go-w3s-client
 package main
 
 import (
+    "io/fs"
     "os"
     "github.com/web3-storage/go-w3s-client"
 )
@@ -21,8 +22,44 @@ import (
 func main() {
     c, _ := w3s.NewClient(w3s.WithToken("<AUTH_TOKEN>"))
     f, _ := os.Open("images/pinpie.jpg")
+
+    // OR add a whole directory:
+    //
+    //   f, _ := os.Open("images")
+    //
+    // OR create your own directory:
+    //
+    //   img0, _ := os.Open("aliens.jpg")
+    //   img1, _ := os.Open("donotresist.jpg")
+    //   f := w3fs.NewDir("images", []fs.File{img0, img1})
+
+    // Write a file/directory
     cid, _ := c.Put(context.Background(), f)
-	fmt.Printf("https://%v.ipfs.dweb.link\n", cid)
+    fmt.Printf("https://%v.ipfs.dweb.link\n", cid)
+
+    // Retrieve a file/directory
+    f, fsys, _ := c.Get(context.Background(), cid)
+
+    // List directory entries
+    if d, ok := f.(fs.ReadDirFile); ok {
+        ents, _ := d.ReadDir(0)
+        for _, ent := range ents {
+            fmt.Println(ent.Name())
+        }
+    }
+
+    // Walk whole directory contents (including nested directories)
+    fs.WalkDir(fsys, "/", func(path string, d fs.DirEntry, err error) error {
+        info, _ := d.Info()
+        fmt.Printf("%s (%d bytes)\n", path, info.Size())
+        return err
+    })
+
+    // Open a file in a directory
+    img, _ := fsys.Open("pinpie.jpg")
+    // img.Stat()
+    // img.Read(...)
+    // img.Close()
 }
 ```
 
