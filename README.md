@@ -2,6 +2,8 @@
 
 A client to the Web3.Storage API.
 
+Demo: https://youtu.be/FLsQZ_ogeOg
+
 ## Install
 
 ```sh
