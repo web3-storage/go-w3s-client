@@ -7,12 +7,10 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/alanshaw/go-carbites"
 	"github.com/filecoin-project/go-address"
-	"github.com/ipfs/go-blockservice"
 	bserv "github.com/ipfs/go-blockservice"
 	"github.com/ipfs/go-cid"
 	ds "github.com/ipfs/go-datastore"
@@ -233,7 +231,7 @@ type clientConfig struct {
 
 type client struct {
 	cfg  *clientConfig
-	bsvc blockservice.BlockService
+	bsvc bserv.BlockService
 	hc   *http.Client
 }
 
@@ -365,33 +363,30 @@ func (c *client) Put(ctx context.Context, file fs.File, options ...PutOption) (c
 
 // PutCar uploads a CAR (Content Addressable Archive) to Web3.Storage.
 func (c *client) PutCar(ctx context.Context, car io.Reader) (cid.Cid, error) {
-	carChunks := make(chan io.Reader)
-
-	var root cid.Cid
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	var sendErr error
-	go func() {
-		defer wg.Done()
-		for r := range carChunks {
-			// TODO: concurrency
-			c, err := c.sendCar(ctx, r)
-			if err != nil {
-				sendErr = err
-				break
-			}
-			root = c
-		}
-	}()
-
-	err := carbites.Split(ctx, car, targetChunkSize, carbites.Treewalk, carChunks)
+	spltr, err := carbites.Split(car, targetChunkSize, carbites.Treewalk)
 	if err != nil {
 		return cid.Undef, err
 	}
-	wg.Wait()
 
-	return root, sendErr
+	var root cid.Cid
+	for {
+		r, err := spltr.Next()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return cid.Undef, err
+		}
+
+		// TODO: concurrency
+		c, err := c.sendCar(ctx, r)
+		if err != nil {
+			return cid.Undef, err
+		}
+		root = c
+	}
+
+	return root, nil
 }
 
 func (c *client) Status(ctx context.Context, cid cid.Cid) (*Status, error) {
