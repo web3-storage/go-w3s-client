@@ -2,6 +2,8 @@
 
 A client to the Web3.Storage API.
 
+Demo: https://youtu.be/FLsQZ_ogeOg
+
 ## Install
 
 ```sh
@@ -38,7 +40,10 @@ func main() {
     fmt.Printf("https://%v.ipfs.dweb.link\n", cid)
 
     // Retrieve a file/directory
-    f, fsys, _ := c.Get(context.Background(), cid)
+    res, _ := c.Get(context.Background(), cid)
+    
+    // res is a http.Response with an extra method for reading IPFS UnixFS files!
+    f, fsys, _ := res.Files()
 
     // List directory entries
     if d, ok := f.(fs.ReadDirFile); ok {
