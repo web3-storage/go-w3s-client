@@ -91,7 +91,7 @@ func (p *Pin) UnmarshalJSON(b []byte) error {
 	} else if raw.Status == "PinQueued" {
 		p.Status = PinStatusPinQueued
 	} else {
-		return fmt.Errorf("unknown deal status: %s", raw.Status)
+		return fmt.Errorf("unknown pin status: %s", raw.Status)
 	}
 	return nil
 }
