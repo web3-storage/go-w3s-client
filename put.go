@@ -120,7 +120,7 @@ func (c *client) sendCar(ctx context.Context, r io.Reader) (cid.Cid, error) {
 	}
 	req.Header.Add("Content-Type", "application/car")
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.cfg.token))
-	req.Header.Add("X-Client", "web3.storage/go")
+	req.Header.Add("X-Client", clientName)
 	res, err := c.hc.Do(req)
 	if err != nil {
 		return cid.Undef, err

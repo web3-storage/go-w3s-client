@@ -15,6 +15,8 @@ import (
 	w3http "github.com/web3-storage/go-w3s-client/http"
 )
 
+const clientName = "web3.storage/go"
+
 // Client is a HTTP API client to the web3.storage service.
 type Client interface {
 	Get(context.Context, cid.Cid) (*w3http.Web3Response, error)

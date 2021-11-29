@@ -209,7 +209,7 @@ func (c *client) Status(ctx context.Context, cid cid.Cid) (*Status, error) {
 		return nil, err
 	}
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.cfg.token))
-	req.Header.Add("X-Client", "web3.storage/go")
+	req.Header.Add("X-Client", clientName)
 	res, err := c.hc.Do(req)
 	if err != nil {
 		return nil, err

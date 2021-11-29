@@ -15,7 +15,7 @@ func (c *client) Get(ctx context.Context, cid cid.Cid) (*w3http.Web3Response, er
 		return nil, err
 	}
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.cfg.token))
-	req.Header.Add("X-Client", "web3.storage/go")
+	req.Header.Add("X-Client", clientName)
 	res, err := c.hc.Do(req)
 	return w3http.NewWeb3Response(res, c.bsvc), err
 }
