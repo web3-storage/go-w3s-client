@@ -266,6 +266,7 @@ func (c *client) sendCar(ctx context.Context, r io.Reader) (cid.Cid, error) {
 	}
 	req.Header.Add("Content-Type", "application/car")
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.cfg.token))
+	req.Header.Add("X-Client", "web3.storage/go")
 	res, err := c.hc.Do(req)
 	if err != nil {
 		return cid.Undef, err
@@ -290,6 +291,7 @@ func (c *client) Get(ctx context.Context, cid cid.Cid) (*w3http.Web3Response, er
 		return nil, err
 	}
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.cfg.token))
+	req.Header.Add("X-Client", "web3.storage/go")
 	res, err := c.hc.Do(req)
 	return w3http.NewWeb3Response(res, c.bsvc), err
 }
@@ -395,6 +397,7 @@ func (c *client) Status(ctx context.Context, cid cid.Cid) (*Status, error) {
 		return nil, err
 	}
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.cfg.token))
+	req.Header.Add("X-Client", "web3.storage/go")
 	res, err := c.hc.Do(req)
 	if err != nil {
 		return nil, err
