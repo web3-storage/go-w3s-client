@@ -23,6 +23,7 @@ type Client interface {
 	Put(context.Context, fs.File, ...PutOption) (cid.Cid, error)
 	PutCar(context.Context, io.Reader) (cid.Cid, error)
 	Status(context.Context, cid.Cid) (*Status, error)
+	List(context.Context, ...ListOption) (*ListIterator, error)
 }
 
 type clientConfig struct {
@@ -59,3 +60,5 @@ func NewClient(options ...Option) (Client, error) {
 	}
 	return &c, nil
 }
+
+var _ Client = (*client)(nil)
