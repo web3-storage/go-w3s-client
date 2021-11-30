@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 
@@ -24,8 +25,9 @@ func main() {
 
 	// cid := putSingleFile(c)
 	// getStatusForCid(c, cid)
-
+	// getStatusForKnownCid(c)
 	getFiles(c)
+	// listUploads(c)
 }
 
 func putSingleFile(c w3s.Client) cid.Cid {
@@ -90,7 +92,7 @@ func getStatusForCid(c w3s.Client, cid cid.Cid) {
 }
 
 func getStatusForKnownCid(c w3s.Client) {
-	cid, _ := cid.Parse("bafybeig7qnlzyregxe2m63b4kkpx3ujqm5bwmn5wtvtftp7j27tmdtznji")
+	cid, _ := cid.Parse("bafybeiauyddeo2axgargy56kwxirquxaxso3nobtjtjvoqu552oqciudrm")
 	getStatusForCid(c, cid)
 }
 
@@ -123,5 +125,25 @@ func getFiles(c w3s.Client) {
 		}
 	} else {
 		fmt.Printf("%s (%d bytes)\n", cid.String(), info.Size())
+	}
+}
+
+func listUploads(c w3s.Client) {
+	uploads, err := c.List(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	for {
+		u, err := uploads.Next()
+		if err != nil {
+			// finished successfully
+			if err == io.EOF {
+				break
+			}
+			panic(err)
+		}
+
+		fmt.Printf("%s	%s	Size: %d	Deals: %d	Pins: %d\n", u.Created.Format("2006-01-02 15:04:05"), u.Cid, u.DagSize, len(u.Deals), len(u.Pins))
 	}
 }

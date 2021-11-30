@@ -23,7 +23,7 @@ type Client interface {
 	Put(context.Context, fs.File, ...PutOption) (cid.Cid, error)
 	PutCar(context.Context, io.Reader) (cid.Cid, error)
 	Status(context.Context, cid.Cid) (*Status, error)
-	List(context.Context, ...ListOption) (*ListIterator, error)
+	List(context.Context, ...ListOption) (*UploadIterator, error)
 }
 
 type clientConfig struct {

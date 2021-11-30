@@ -10,7 +10,7 @@ import (
 )
 
 func (c *client) Get(ctx context.Context, cid cid.Cid) (*w3http.Web3Response, error) {
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/car/%s", c.cfg.endpoint, cid), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/car/%s", c.cfg.endpoint, cid), nil)
 	if err != nil {
 		return nil, err
 	}

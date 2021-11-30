@@ -13,7 +13,7 @@ import (
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
-const iso8601 = "2006-01-02T15:04:05Z0700"
+const iso8601 = "2006-01-02T15:04:05.999Z07:00"
 
 type PinStatus int
 
@@ -194,7 +194,7 @@ func (s *Status) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	s.DagSize = raw.DagSize
-	s.Created, err = time.Parse(iso8601, raw.Created)
+	s.Created, err = time.Parse(time.RFC3339Nano, raw.Created)
 	if err != nil {
 		return err
 	}
@@ -204,7 +204,7 @@ func (s *Status) UnmarshalJSON(b []byte) error {
 }
 
 func (c *client) Status(ctx context.Context, cid cid.Cid) (*Status, error) {
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/status/%s", c.cfg.endpoint, cid), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/status/%s", c.cfg.endpoint, cid), nil)
 	if err != nil {
 		return nil, err
 	}
