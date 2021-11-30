@@ -13,7 +13,7 @@ import (
 	peer "github.com/libp2p/go-libp2p-core/peer"
 )
 
-const iso8601 = "2006-01-02T15:04:05Z0700"
+const iso8601 = "2006-01-02T15:04:05.999Z07:00"
 
 type PinStatus int
 
@@ -204,12 +204,12 @@ func (s *Status) UnmarshalJSON(b []byte) error {
 }
 
 func (c *client) Status(ctx context.Context, cid cid.Cid) (*Status, error) {
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/status/%s", c.cfg.endpoint, cid), nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/status/%s", c.cfg.endpoint, cid), nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.cfg.token))
-	req.Header.Add("X-Client", "web3.storage/go")
+	req.Header.Add("X-Client", clientName)
 	res, err := c.hc.Do(req)
 	if err != nil {
 		return nil, err

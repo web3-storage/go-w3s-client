@@ -15,12 +15,15 @@ import (
 	w3http "github.com/web3-storage/go-w3s-client/http"
 )
 
+const clientName = "web3.storage/go"
+
 // Client is a HTTP API client to the web3.storage service.
 type Client interface {
 	Get(context.Context, cid.Cid) (*w3http.Web3Response, error)
 	Put(context.Context, fs.File, ...PutOption) (cid.Cid, error)
 	PutCar(context.Context, io.Reader) (cid.Cid, error)
 	Status(context.Context, cid.Cid) (*Status, error)
+	List(context.Context, ...ListOption) (*UploadIterator, error)
 }
 
 type clientConfig struct {
@@ -57,3 +60,5 @@ func NewClient(options ...Option) (Client, error) {
 	}
 	return &c, nil
 }
+
+var _ Client = (*client)(nil)

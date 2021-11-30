@@ -2,6 +2,7 @@ package w3s
 
 import (
 	"io/fs"
+	"time"
 
 	ds "github.com/ipfs/go-datastore"
 )
@@ -61,6 +62,26 @@ func WithFs(fsys fs.FS) PutOption {
 func WithDirname(dirname string) PutOption {
 	return func(cfg *putConfig) error {
 		cfg.dirname = dirname
+		return nil
+	}
+}
+
+// ListOption is an option configuring a call to List.
+type ListOption func(cfg *listConfig) error
+
+// WithBefore sets the time that items in the list were uploaded before.
+func WithBefore(before time.Time) ListOption {
+	return func(cfg *listConfig) error {
+		cfg.before = before
+		return nil
+	}
+}
+
+// WithMaxResults sets the maximum number of results that will be available from
+// the iterator.
+func WithMaxResults(maxResults int) ListOption {
+	return func(cfg *listConfig) error {
+		cfg.maxResults = maxResults
 		return nil
 	}
 }
