@@ -194,7 +194,7 @@ func (s *Status) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	s.DagSize = raw.DagSize
-	s.Created, err = time.Parse(time.RFC3339Nano, raw.Created)
+	s.Created, err = time.Parse(iso8601, raw.Created)
 	if err != nil {
 		return err
 	}
