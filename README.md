@@ -4,6 +4,10 @@ A client to the Web3.Storage API.
 
 Demo: https://youtu.be/FLsQZ_ogeOg
 
+## CLI
+
+If you are looking for the CLI see [cli/w3s/](cli/w3s/).
+
 ## Install
 
 ```sh
