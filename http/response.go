@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"io"
 	"io/fs"
 	"net/http"
@@ -37,7 +38,7 @@ func (r *Web3Response) Files() (fs.File, fs.FS, error) {
 			}
 			return nil, nil, err
 		}
-		err = r.bsvc.AddBlock(b)
+		err = r.bsvc.AddBlock(context.Background(), b)
 		if err != nil {
 			return nil, nil, err
 		}
