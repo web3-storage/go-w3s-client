@@ -3,7 +3,7 @@ module github.com/web3-storage/go-w3s-client
 go 1.16
 
 require (
-	github.com/alanshaw/go-carbites v0.4.0
+	github.com/alanshaw/go-carbites v0.5.0
 	github.com/filecoin-project/go-address v0.0.6
 	github.com/ipfs/go-blockservice v0.2.1
 	github.com/ipfs/go-cid v0.1.0
@@ -26,5 +26,3 @@ require (
 	github.com/libp2p/go-libp2p-core v0.11.0
 	github.com/tomnomnom/linkheader v0.0.0-20180905144013-02ca5825eb80
 )
-
-replace github.com/alanshaw/go-carbites => github.com/Jorropo/go-carbites v0.4.1-0.20211220074943-751dcbf09c8a // See https://github.com/alanshaw/go-carbites/pull/2
