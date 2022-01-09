@@ -11,7 +11,7 @@ import (
 )
 
 // Usage:
-// TOKEN="API_TOKEN" go run ./main.go
+// TOKEN="API_TOKEN" go run ./w3scli.go
 func main() {
 
 
