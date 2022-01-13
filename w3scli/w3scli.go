@@ -1,4 +1,4 @@
-package w3scli
+package main
 
 import (
 	"context"

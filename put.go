@@ -94,6 +94,7 @@ func (c *client) PutCar(ctx context.Context, car io.Reader) (cid.Cid, error) {
 	var root cid.Cid
 	for {
 		r, err := spltr.Next()
+
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -112,8 +113,8 @@ func (c *client) PutCar(ctx context.Context, car io.Reader) (cid.Cid, error) {
 	return root, nil
 }
 
-// TODO: retry
 func (c *client) sendCar(ctx context.Context, r io.Reader) (cid.Cid, error) {
+	
 	req, err := http.NewRequestWithContext(ctx, "POST", c.cfg.endpoint+"/car", r)
 	if err != nil {
 		return cid.Undef, err
@@ -126,7 +127,11 @@ func (c *client) sendCar(ctx context.Context, r io.Reader) (cid.Cid, error) {
 		return cid.Undef, err
 	}
 	if res.StatusCode != 200 {
-		return cid.Undef, fmt.Errorf("unexpected response status: %d", res.StatusCode)
+
+		//retry on failure
+		fmt.Printf("unexpected response status: %d, retrying..\n", res.StatusCode)
+		c.sendCar(ctx, r)
+
 	}
 	d := json.NewDecoder(res.Body)
 	var out struct {
