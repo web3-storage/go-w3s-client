@@ -1,10 +1,13 @@
 package w3s
 
 import (
+	"fmt"
 	"io/fs"
+	"net/http"
 	"time"
 
 	ds "github.com/ipfs/go-datastore"
+	"github.com/multiformats/go-multiaddr"
 )
 
 // Option is an option configuring a web3.storage client.
@@ -37,6 +40,18 @@ func WithDatastore(ds ds.Batching) Option {
 	return func(cfg *clientConfig) error {
 		if ds != nil {
 			cfg.ds = ds
+		}
+		return nil
+	}
+}
+
+// WithHTTPClient sets the HTTP client to use when making requests which allows
+// timeouts and redirect behaviour to be configured. The default is to use the
+// DefaultClient from the Go standard library.
+func WithHTTPClient(hc *http.Client) Option {
+	return func(cfg *clientConfig) error {
+		if hc != nil {
+			cfg.hc = hc
 		}
 		return nil
 	}
@@ -82,6 +97,40 @@ func WithBefore(before time.Time) ListOption {
 func WithMaxResults(maxResults int) ListOption {
 	return func(cfg *listConfig) error {
 		cfg.maxResults = maxResults
+		return nil
+	}
+}
+
+// PinOption is an option configuring a call to Pin.
+type PinOption func(cfg *pinConfig) error
+
+// WithPinName sets the name to use for the pinned data.
+func WithPinName(name string) PinOption {
+	return func(cfg *pinConfig) error {
+		cfg.name = name
+		return nil
+	}
+}
+
+// WithPinOrigin adds a multiaddr known to provide the data.
+func WithPinOrigin(ma string) PinOption {
+	return func(cfg *pinConfig) error {
+		_, err := multiaddr.NewMultiaddr(ma)
+		if err != nil {
+			return fmt.Errorf("origin: %w", err)
+		}
+		cfg.origins = append(cfg.origins, ma)
+		return nil
+	}
+}
+
+// WithPinMeta adds metadata about pinned data.
+func WithPinMeta(key, value string) PinOption {
+	return func(cfg *pinConfig) error {
+		if cfg.meta == nil {
+			cfg.meta = map[string]string{}
+		}
+		cfg.meta[key] = value
 		return nil
 	}
 }

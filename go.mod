@@ -24,5 +24,6 @@ require (
 	github.com/ipld/go-codec-dagpb v1.3.0
 	github.com/ipld/go-ipld-prime v0.14.3
 	github.com/libp2p/go-libp2p-core v0.11.0
+	github.com/multiformats/go-multiaddr v0.4.1
 	github.com/tomnomnom/linkheader v0.0.0-20180905144013-02ca5825eb80
 )

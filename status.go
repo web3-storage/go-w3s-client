@@ -21,6 +21,9 @@ const (
 	PinStatusPinned    = PinStatus(api.TrackerStatusPinned)
 	PinStatusPinning   = PinStatus(api.TrackerStatusPinning)
 	PinStatusPinQueued = PinStatus(api.TrackerStatusPinQueued)
+	PinStatusRemote    = PinStatus(api.TrackerStatusRemote)
+	PinStatusUnpinned  = PinStatus(api.TrackerStatusUnpinned)
+	PinStatusUnknown   = PinStatus(-1)
 )
 
 func (s PinStatus) String() string {
@@ -32,6 +35,12 @@ func (s PinStatus) String() string {
 	}
 	if s == PinStatusPinQueued {
 		return "PinQueued"
+	}
+	if s == PinStatusRemote {
+		return "Remote"
+	}
+	if s == PinStatusUnpinned {
+		return "Unpinned"
 	}
 	return "Unknown"
 }
@@ -70,8 +79,12 @@ func (p *Pin) UnmarshalJSON(b []byte) error {
 		p.Status = PinStatusPinning
 	} else if raw.Status == "PinQueued" {
 		p.Status = PinStatusPinQueued
+	} else if raw.Status == "Remote" {
+		p.Status = PinStatusRemote
+	} else if raw.Status == "Unpinned" {
+		p.Status = PinStatusUnpinned
 	} else {
-		return fmt.Errorf("unknown pin status: %s", raw.Status)
+		p.Status = PinStatusUnknown
 	}
 	return nil
 }
@@ -210,7 +223,7 @@ func (c *client) Status(ctx context.Context, cid cid.Cid) (*Status, error) {
 	}
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.cfg.token))
 	req.Header.Add("X-Client", clientName)
-	res, err := c.hc.Do(req)
+	res, err := c.cfg.hc.Do(req)
 	if err != nil {
 		return nil, err
 	}

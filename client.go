@@ -24,24 +24,26 @@ type Client interface {
 	PutCar(context.Context, io.Reader) (cid.Cid, error)
 	Status(context.Context, cid.Cid) (*Status, error)
 	List(context.Context, ...ListOption) (*UploadIterator, error)
+	Pin(context.Context, cid.Cid, ...PinOption) (*PinResponse, error)
 }
 
 type clientConfig struct {
 	token    string
 	endpoint string
 	ds       ds.Batching
+	hc       *http.Client
 }
 
 type client struct {
 	cfg  *clientConfig
 	bsvc bserv.BlockService
-	hc   *http.Client
 }
 
 // NewClient creates a new web3.storage API client.
 func NewClient(options ...Option) (Client, error) {
 	cfg := clientConfig{
 		endpoint: "https://api.web3.storage",
+		hc:       &http.Client{},
 	}
 	for _, opt := range options {
 		if err := opt(&cfg); err != nil {
@@ -51,7 +53,7 @@ func NewClient(options ...Option) (Client, error) {
 	if cfg.token == "" {
 		return nil, fmt.Errorf("missing auth token")
 	}
-	c := client{cfg: &cfg, hc: &http.Client{}}
+	c := client{cfg: &cfg}
 	if cfg.ds != nil {
 		c.bsvc = bserv.New(blockstore.NewBlockstore(cfg.ds), nil)
 	} else {

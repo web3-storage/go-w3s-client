@@ -68,8 +68,6 @@ func (c *client) Put(ctx context.Context, file fs.File, options ...PutOption) (c
 		root = cnode.Cid()
 	}
 
-	// fmt.Println("root CID", root)
-
 	carReader, carWriter := io.Pipe()
 
 	go func() {
@@ -121,7 +119,7 @@ func (c *client) sendCar(ctx context.Context, r io.Reader) (cid.Cid, error) {
 	req.Header.Add("Content-Type", "application/car")
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.cfg.token))
 	req.Header.Add("X-Client", clientName)
-	res, err := c.hc.Do(req)
+	res, err := c.cfg.hc.Do(req)
 	if err != nil {
 		return cid.Undef, err
 	}

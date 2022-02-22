@@ -73,7 +73,7 @@ func (c *client) List(ctx context.Context, options ...ListOption) (*UploadIterat
 		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.cfg.token))
 		req.Header.Add("Access-Control-Request-Headers", "Link")
 		req.Header.Add("X-Client", clientName)
-		res, err := c.hc.Do(req)
+		res, err := c.cfg.hc.Do(req)
 		if err != nil {
 			return nil, err
 		}
