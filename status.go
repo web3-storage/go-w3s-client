@@ -223,7 +223,7 @@ func (c *client) Status(ctx context.Context, cid cid.Cid) (*Status, error) {
 	}
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.cfg.token))
 	req.Header.Add("X-Client", clientName)
-	res, err := c.hc.Do(req)
+	res, err := c.cfg.hc.Do(req)
 	if err != nil {
 		return nil, err
 	}
