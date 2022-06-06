@@ -19,11 +19,11 @@ require (
 	github.com/ipfs/go-path v0.2.1
 	github.com/ipfs/go-unixfs v0.3.1
 	github.com/ipfs/go-unixfsnode v1.1.3
-	github.com/ipfs/ipfs-cluster v0.14.2
+	github.com/ipfs/ipfs-cluster v0.14.4
 	github.com/ipld/go-car v0.3.3
 	github.com/ipld/go-codec-dagpb v1.3.0
 	github.com/ipld/go-ipld-prime v0.14.3
-	github.com/libp2p/go-libp2p-core v0.11.0
-	github.com/multiformats/go-multiaddr v0.4.1
+	github.com/libp2p/go-libp2p-core v0.13.0
+	github.com/multiformats/go-multiaddr v0.5.0
 	github.com/tomnomnom/linkheader v0.0.0-20180905144013-02ca5825eb80
 )
