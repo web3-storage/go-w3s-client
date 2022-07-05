@@ -73,7 +73,7 @@ func (c *client) List(ctx context.Context, options ...ListOption) (*UploadIterat
 		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", c.cfg.token))
 		req.Header.Add("Access-Control-Request-Headers", "Link")
 		req.Header.Add("X-Client", clientName)
-		res, err := c.hc.Do(req)
+		res, err := c.cfg.hc.Do(req)
 		if err != nil {
 			return nil, err
 		}
@@ -121,20 +121,23 @@ func newPageIterator(url string, fetchNextPage func(string) (*http.Response, err
 }
 
 func (pi *pageIterator) Next() (*http.Response, error) {
+	if pi.nextURL == "" {
+		return nil, io.EOF
+	}
 	res, err := pi.fetchNextPage(pi.nextURL)
 	if err != nil {
 		return nil, err
 	}
 	linkHdrs := res.Header["Link"]
-	if len(linkHdrs) == 0 {
-		return nil, io.EOF
-	}
-	links := linkheader.Parse(linkHdrs[0])
-	for _, l := range links {
-		if l.Rel == "next" {
-			pi.nextURL = links[0].URL
-			return res, nil
+	pi.nextURL = ""
+	if len(linkHdrs) > 0 {
+		links := linkheader.Parse(linkHdrs[0])
+		for _, l := range links {
+			if l.Rel == "next" {
+				pi.nextURL = l.URL
+				break
+			}
 		}
 	}
-	return nil, io.EOF
+	return res, nil
 }
