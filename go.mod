@@ -16,7 +16,7 @@ require (
 	github.com/ipfs/go-ipld-format v0.2.0
 	github.com/ipfs/go-merkledag v0.5.1
 	github.com/ipfs/go-mfs v0.2.1
-	github.com/ipfs/go-path v0.2.1
+	github.com/ipfs/go-path v0.3.0
 	github.com/ipfs/go-unixfs v0.3.1
 	github.com/ipfs/go-unixfsnode v1.1.3
 	github.com/ipfs/ipfs-cluster v0.14.2
