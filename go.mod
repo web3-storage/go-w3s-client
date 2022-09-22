@@ -20,7 +20,7 @@ require (
 	github.com/ipfs/go-unixfs v0.3.1
 	github.com/ipfs/go-unixfsnode v1.1.3
 	github.com/ipfs/ipfs-cluster v0.14.2
-	github.com/ipld/go-car v0.3.3
+	github.com/ipld/go-car v0.5.0
 	github.com/ipld/go-codec-dagpb v1.3.1
 	github.com/ipld/go-ipld-prime v0.16.0
 	github.com/libp2p/go-libp2p-core v0.11.0
