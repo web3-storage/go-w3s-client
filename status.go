@@ -168,13 +168,17 @@ func (d *Deal) UnmarshalJSON(b []byte) error {
 			return err
 		}
 	}
-	d.Created, err = time.Parse(iso8601, raw.Created)
-	if err != nil {
-		return err
+	if raw.Created != "" {
+		d.Created, err = time.Parse(iso8601, raw.Created)
+		if err != nil {
+			return err
+		}
 	}
-	d.Updated, err = time.Parse(iso8601, raw.Updated)
-	if err != nil {
-		return err
+	if raw.Updated != "" {
+		d.Updated, err = time.Parse(iso8601, raw.Updated)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
