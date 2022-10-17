@@ -29,7 +29,7 @@ type unixfsFs struct {
 	rootCid  cid.Cid
 	bsvc     blockservice.BlockService
 	dsvc     format.DAGService
-	resolver *pathresolver.Resolver
+	resolver pathresolver.Resolver
 }
 
 func NewFs(root cid.Cid, bsvc blockservice.BlockService) (fs.FS, error) {
