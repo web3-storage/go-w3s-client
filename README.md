@@ -20,6 +20,8 @@ package main
 import (
     "io/fs"
     "os"
+    "fmt"
+    "context"
     "github.com/web3-storage/go-w3s-client"
 )
 
